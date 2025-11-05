@@ -108,3 +108,7 @@ async def get_all_station_arrivals():
                 all_data[station_name] = data.get("all_departures", {})
 
     return all_data
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8085)
