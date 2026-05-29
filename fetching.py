@@ -44,7 +44,7 @@ async def fetch_train_data(client: httpx.AsyncClient, station_id: int) -> dict:
     payload = {"idEst": station_id, "adm": 1}
 
     try:
-        response = await client.post(url, data=payload, timeout=10.0)
+        response = await client.post(url, data=payload, timeout=30.0)
         response.raise_for_status()
 
         # Parse the HTML content

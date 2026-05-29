@@ -12,8 +12,8 @@ STATION_ORDER = [
     "Tortuguitas", "M. Alberti", "Del Viso", "Cecilia Grierson", "Villa Rosa"
 ]
 
-DB_PATH = "/Users/defeee/Ferrovias-API/analytics.db"
-DATA_DIR = "/Users/defeee/Ferrovias-API/data"
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "analytics.db")
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
 class AnalyticsDatabase:
     def __init__(self):
@@ -161,9 +161,11 @@ class AnalyticsDatabase:
                 """, records)
                 conn.commit()
                 print(f"Loaded {len(records)} timetable schedules into database.")
+    
     def log_arrival_record(self, train_id, station_name, destination):
         # Triggered when backend scraper identifies a train AT a station
-        now = datetime.now()
+        # Corrected to GMT-3 (subtract 3 hours from server time)
+        now = datetime.now() - timedelta(hours=3)
         date_str = now.strftime("%Y-%m-%d")
         record_id = f"{date_str}-{station_name}-{train_id}"
         
@@ -222,7 +224,8 @@ class AnalyticsDatabase:
             return True
 
     def write_scraping_log(self, processed_count, logged_count, status, error_msg=""):
-        timestamp_str = datetime.now().isoformat()
+        # Corrected to GMT-3
+        timestamp_str = (datetime.now() - timedelta(hours=3)).isoformat()
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -253,7 +256,9 @@ class AnalyticsDatabase:
             }
 
     def get_analytics_stats(self, days=30):
-        cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        # Corrected to GMT-3
+        now_local = datetime.now() - timedelta(hours=3)
+        cutoff_date = (now_local - timedelta(days=days)).strftime("%Y-%m-%d")
         
         with self.get_connection() as conn:
             conn.row_factory = sqlite3.Row
@@ -280,7 +285,7 @@ class AnalyticsDatabase:
                     "peakHours": [],
                     "dataRange": {
                         "from": cutoff_date,
-                        "to": datetime.now().strftime("%Y-%m-%d")
+                        "to": now_local.strftime("%Y-%m-%d")
                     },
                     "standings": []
                 }
@@ -328,7 +333,7 @@ class AnalyticsDatabase:
                     "punctualityPercentage": pct,
                     "worstDelayMinutes": row['max_del'] or 0,
                     "bestPerformanceHour": best_hour,
-                    "lastUpdated": datetime.now().isoformat()
+                    "lastUpdated": now_local.isoformat()
                 })
                 
             # Sort by punctuality
@@ -357,7 +362,7 @@ class AnalyticsDatabase:
                 "peakHours": peak_hours if peak_hours else ["07:00", "08:00", "18:00"],
                 "dataRange": {
                     "from": cutoff_date,
-                    "to": datetime.now().strftime("%Y-%m-%d")
+                    "to": now_local.strftime("%Y-%m-%d")
                 },
                 "standings": station_stats
             }

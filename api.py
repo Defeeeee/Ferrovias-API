@@ -92,7 +92,7 @@ async def background_collector_loop():
             print(f"Background Collector Error: {e}")
             db.write_scraping_log(0, 0, "ERROR", str(e))
             
-        await asyncio.sleep(120) # Poll every 2 minutes
+        await asyncio.sleep(45) # Poll every 45 seconds to catch all trains
 
 
 @app.on_event("startup")
@@ -119,18 +119,28 @@ async def get_stations():
 
 
 # --- Cache Helpers ---
+async def fetch_with_semaphore(semaphore, client, name, station_id):
+    async with semaphore:
+        data = await fetch_train_data(client, station_id)
+        if data.get("error"):
+            print(f"Fetcher Error for {name}: {data.get('error')}")
+        return name, data
+
 async def get_all_stations_data_internal() -> dict:
     station_data_map = {}
+    semaphore = asyncio.Semaphore(5) # Limit concurrency to 5 to avoid overwhelming the server
+    
     async with httpx.AsyncClient() as client:
         tasks = []
-        station_names = list(STATION_IDS.keys())
-        for name in station_names:
-            tasks.append(fetch_train_data(client, STATION_IDS[name]))
+        for name, station_id in STATION_IDS.items():
+            tasks.append(fetch_with_semaphore(semaphore, client, name, station_id))
         
         results = await asyncio.gather(*tasks)
-        for name, data in zip(station_names, results):
+        for name, data in results:
             if not data.get("error"):
                 station_data_map[name] = data
+                
+    print(f"Fetcher: Successfully retrieved data for {len(station_data_map)}/{len(STATION_IDS)} stations.")
     return station_data_map
 
 async def get_cached_stations_data() -> dict:
@@ -225,7 +235,7 @@ async def plan_route(
     
     direction = 'villarosa' if orig_idx < dest_idx else 'retiro'
     
-    now = datetime.now()
+    now = datetime.now() - timedelta(hours=3)
     current_time_str = now.strftime("%H:%M")
     weekday = now.weekday()
     day_type = "sunday" if weekday == 6 else ("saturday" if weekday == 5 else "weekday")
