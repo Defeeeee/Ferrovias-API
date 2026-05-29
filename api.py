@@ -240,7 +240,8 @@ async def plan_route(
     weekday = now.weekday()
     day_type = "sunday" if weekday == 6 else ("saturday" if weekday == 5 else "weekday")
     
-    search_dt = now - timedelta(minutes=15)
+    # Look back 60 minutes to capture delayed trains that haven't departed yet
+    search_dt = now - timedelta(minutes=60)
     search_time_str = search_dt.strftime("%H:%M")
     
     with db.get_connection() as conn:
@@ -255,7 +256,7 @@ async def plan_route(
               AND s1.scheduled_time_str < s2.scheduled_time_str
               AND s1.scheduled_time_str >= ?
             ORDER BY s1.scheduled_time_str ASC
-            LIMIT 4
+            LIMIT 12
         """, (origin, destination, day_type, search_time_str))
         
         rows = cursor.fetchall()
@@ -333,14 +334,33 @@ async def plan_route(
         try:
             oh, om = map(int, origin_sched.split(':'))
             origin_dt = now.replace(hour=oh, minute=om, second=0, microsecond=0) + timedelta(minutes=delay_minutes)
+            
+            # Handle midnight crossing date wrap-around
+            time_diff = now - origin_dt
+            if time_diff.total_seconds() > 43200: # 12 hours
+                origin_dt += timedelta(days=1)
+            elif time_diff.total_seconds() < -43200:
+                origin_dt -= timedelta(days=1)
+                
             est_departure = origin_dt.strftime("%H:%M")
             
             dh, dm = map(int, dest_sched.split(':'))
             dest_dt = now.replace(hour=dh, minute=dm, second=0, microsecond=0) + timedelta(minutes=delay_minutes)
+            time_diff_dest = now - dest_dt
+            if time_diff_dest.total_seconds() > 43200:
+                dest_dt += timedelta(days=1)
+            elif time_diff_dest.total_seconds() < -43200:
+                dest_dt -= timedelta(days=1)
+                
             est_arrival = dest_dt.strftime("%H:%M")
         except Exception:
+            origin_dt = now
             est_departure = origin_sched
             est_arrival = dest_sched
+            
+        # Filter out trains that have already departed (with a 2-minute boarding margin)
+        if origin_dt < now - timedelta(minutes=2):
+            continue
             
         stops = []
         with db.get_connection() as conn:
@@ -391,7 +411,7 @@ async def plan_route(
         "destination": destination,
         "dayType": day_type,
         "currentTime": current_time_str,
-        "trains": routes
+        "trains": routes[:4]
     }
 
 
